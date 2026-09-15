@@ -1,185 +1,133 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RoadmapData, Epic, Story } from './types';
+import { RoadmapData, Card, CardType, Assignee, CardGroup, Status, Priority, VolumeUnit, TYPE_COLORS } from './types';
 
-const STORAGE_KEY = 'sa-alytics-roadmap';
+const STORAGE_KEY = 'roadmap-alytics-data';
+
+const DEFAULT_TYPES: CardType[] = [
+  { id: 'type-backend', name: 'Backend', color: '#8b5cf6', icon: '⚙️' },
+  { id: 'type-frontend', name: 'Frontend / UI', color: '#06b6d4', icon: '🎨' },
+  { id: 'type-devops', name: 'DevOps', color: '#f59e0b', icon: '🔧' },
+  { id: 'type-infra', name: 'Инфраструктура', color: '#10b981', icon: '🏗️' },
+  { id: 'type-v3', name: 'V3 Alytics', color: '#ec4899', icon: '🚀' },
+  { id: 'type-techdebt', name: 'Техдолг', color: '#ef4444', icon: '🧹' },
+  { id: 'type-analytics', name: 'Аналитика', color: '#6366f1', icon: '📊' },
+  { id: 'type-security', name: 'Безопасность', color: '#14b8a6', icon: '🔒' },
+];
+
+const DEFAULT_ASSIGNEES: Assignee[] = [
+  { id: 'a-1', name: 'Фронтенд команда', role: 'Frontend', emoji: '🎨' },
+  { id: 'a-2', name: 'Бэкенд команда', role: 'Backend', emoji: '⚙️' },
+  { id: 'a-3', name: 'DevOps', role: 'Infrastructure', emoji: '🔧' },
+  { id: 'a-4', name: 'Бизнес-заказчик', role: 'Business', emoji: '💼' },
+  { id: 'a-5', name: 'Аналитик', role: 'Analytics', emoji: '📊' },
+  { id: 'a-6', name: 'QA', role: 'Testing', emoji: '🧪' },
+];
+
+const DEFAULT_GROUPS: CardGroup[] = [
+  { id: 'g-1', name: '🏗️ Архитектура и инфраструктура', color: '#8b5cf6' },
+  { id: 'g-2', name: '📊 Дашборды и визуализация', color: '#06b6d4' },
+  { id: 'g-3', name: '🤖 AI / ML модуль', color: '#f59e0b' },
+  { id: 'g-4', name: '🔗 Интеграции', color: '#10b981' },
+];
+
+const DEFAULT_CARDS: Card[] = [
+  {
+    id: 'c-1',
+    title: 'Настройка CI/CD пайплайна',
+    description: 'GitHub Actions + Docker',
+    typeId: 'type-devops',
+    groupId: 'g-1',
+    startDate: '2026-01-01',
+    endDate: '2026-01-20',
+    volume: 15,
+    volumeUnit: 'days',
+    jiraLink: 'https://jira.example.com/ALY-101',
+    assigneeId: 'a-3',
+    status: 'completed',
+    priority: 'high',
+  },
+  {
+    id: 'c-2',
+    title: 'Проектирование БД',
+    description: 'PostgreSQL + миграции',
+    typeId: 'type-backend',
+    groupId: 'g-1',
+    startDate: '2026-01-10',
+    endDate: '2026-02-15',
+    volume: 28,
+    volumeUnit: 'days',
+    assigneeId: 'a-2',
+    status: 'completed',
+    priority: 'critical',
+  },
+  {
+    id: 'c-3',
+    title: 'Drag & Drop конструктор',
+    description: 'Виджеты, сетка, ресайз',
+    typeId: 'type-frontend',
+    groupId: 'g-2',
+    startDate: '2026-02-01',
+    endDate: '2026-03-31',
+    volume: 40,
+    volumeUnit: 'story_points',
+    assigneeId: 'a-1',
+    status: 'in_progress',
+    priority: 'critical',
+  },
+  {
+    id: 'c-4',
+    title: 'Детекция аномалий',
+    description: 'ML алгоритмы',
+    typeId: 'type-v3',
+    groupId: 'g-3',
+    startDate: '2026-04-01',
+    endDate: '2026-06-30',
+    volume: 60,
+    volumeUnit: 'story_points',
+    assigneeId: 'a-5',
+    status: 'planned',
+    priority: 'high',
+  },
+  {
+    id: 'c-5',
+    title: 'REST API v2',
+    description: 'Публичный API',
+    typeId: 'type-backend',
+    groupId: 'g-4',
+    startDate: '2026-03-01',
+    endDate: '2026-04-15',
+    volume: 30,
+    volumeUnit: 'hours',
+    jiraLink: 'https://jira.example.com/ALY-205',
+    assigneeId: 'a-2',
+    status: 'in_progress',
+    priority: 'critical',
+  },
+  {
+    id: 'c-6',
+    title: 'Рефакторинг legacy кода',
+    description: 'Миграция на новые паттерны',
+    typeId: 'type-techdebt',
+    groupId: 'g-1',
+    startDate: '2026-02-15',
+    endDate: '2026-03-10',
+    volume: 20,
+    volumeUnit: 'hours',
+    assigneeId: 'a-2',
+    status: 'blocked',
+    priority: 'medium',
+  },
+];
 
 const DEFAULT_DATA: RoadmapData = {
-  projectName: 'SA Alytics',
-  projectDescription: 'Роадмап развития аналитической платформы',
-  epics: [
-    {
-      id: 'epic-1',
-      title: '🏗️ Архитектура и инфраструктура',
-      description: 'Базовая инфраструктура проекта',
-      color: '#8b5cf6',
-      startDate: '2026-01-01',
-      endDate: '2026-03-31',
-      stories: [
-        {
-          id: 'story-1',
-          epicId: 'epic-1',
-          title: 'Настройка CI/CD пайплайна',
-          description: 'GitHub Actions + Docker',
-          startDate: '2026-01-01',
-          endDate: '2026-01-20',
-          status: 'completed',
-          priority: 'high',
-          assignee: 'DevOps',
-        },
-        {
-          id: 'story-2',
-          epicId: 'epic-1',
-          title: 'Проектирование базы данных',
-          description: 'Схема PostgreSQL + миграции',
-          startDate: '2026-01-10',
-          endDate: '2026-02-15',
-          status: 'completed',
-          priority: 'critical',
-          assignee: 'Backend',
-        },
-        {
-          id: 'story-3',
-          epicId: 'epic-1',
-          title: 'Настройка мониторинга',
-          description: 'Prometheus + Grafana',
-          startDate: '2026-02-01',
-          endDate: '2026-03-15',
-          status: 'in_progress',
-          priority: 'medium',
-          assignee: 'DevOps',
-        },
-      ],
-    },
-    {
-      id: 'epic-2',
-      title: '📊 Дашборды и визуализация',
-      description: 'Система дашбордов для аналитики',
-      color: '#06b6d4',
-      startDate: '2026-02-01',
-      endDate: '2026-06-30',
-      stories: [
-        {
-          id: 'story-4',
-          epicId: 'epic-2',
-          title: 'Drag & Drop конструктор дашбордов',
-          description: 'Виджеты, сетка, ресайз',
-          startDate: '2026-02-01',
-          endDate: '2026-03-31',
-          status: 'in_progress',
-          priority: 'critical',
-          assignee: 'Frontend',
-        },
-        {
-          id: 'story-5',
-          epicId: 'epic-2',
-          title: 'Графики и диаграммы',
-          description: 'Line, Bar, Pie, Area charts',
-          startDate: '2026-03-01',
-          endDate: '2026-04-30',
-          status: 'planned',
-          priority: 'high',
-          assignee: 'Frontend',
-        },
-        {
-          id: 'story-6',
-          epicId: 'epic-2',
-          title: 'Экспорт в PDF/Excel',
-          description: 'Генерация отчётов',
-          startDate: '2026-05-01',
-          endDate: '2026-06-15',
-          status: 'planned',
-          priority: 'medium',
-          assignee: 'Backend',
-        },
-      ],
-    },
-    {
-      id: 'epic-3',
-      title: '🤖 AI / ML модуль',
-      description: 'Интеллектуальная аналитика',
-      color: '#f59e0b',
-      startDate: '2026-04-01',
-      endDate: '2026-09-30',
-      stories: [
-        {
-          id: 'story-7',
-          epicId: 'epic-3',
-          title: 'Детекция аномалий',
-          description: 'Алгоритмы ML для обнаружения аномалий',
-          startDate: '2026-04-01',
-          endDate: '2026-06-30',
-          status: 'planned',
-          priority: 'high',
-          assignee: 'ML Team',
-        },
-        {
-          id: 'story-8',
-          epicId: 'epic-3',
-          title: 'Прогнозирование трендов',
-          description: 'Time-series forecasting',
-          startDate: '2026-06-01',
-          endDate: '2026-08-31',
-          status: 'planned',
-          priority: 'high',
-          assignee: 'ML Team',
-        },
-        {
-          id: 'story-9',
-          epicId: 'epic-3',
-          title: 'NLP для инсайтов',
-          description: 'Автоматическое описание данных',
-          startDate: '2026-08-01',
-          endDate: '2026-09-30',
-          status: 'planned',
-          priority: 'medium',
-          assignee: 'ML Team',
-        },
-      ],
-    },
-    {
-      id: 'epic-4',
-      title: '🔗 Интеграции',
-      description: 'Подключение внешних систем',
-      color: '#10b981',
-      startDate: '2026-03-01',
-      endDate: '2026-08-31',
-      stories: [
-        {
-          id: 'story-10',
-          epicId: 'epic-4',
-          title: 'REST API',
-          description: 'Публичный API для интеграций',
-          startDate: '2026-03-01',
-          endDate: '2026-04-15',
-          status: 'in_progress',
-          priority: 'critical',
-          assignee: 'Backend',
-        },
-        {
-          id: 'story-11',
-          epicId: 'epic-4',
-          title: 'Интеграция с 1С',
-          description: 'Коннектор для 1С Предприятие',
-          startDate: '2026-05-01',
-          endDate: '2026-06-30',
-          status: 'planned',
-          priority: 'high',
-          assignee: 'Backend',
-        },
-        {
-          id: 'story-12',
-          epicId: 'epic-4',
-          title: 'Webhook система',
-          description: 'Уведомления о событиях',
-          startDate: '2026-07-01',
-          endDate: '2026-08-31',
-          status: 'planned',
-          priority: 'medium',
-          assignee: 'Backend',
-        },
-      ],
-    },
-  ],
+  projectName: 'Roadmap Alytics',
+  projectDescription: 'Интерактивный роадмап развития проекта',
+  cards: DEFAULT_CARDS,
+  settings: {
+    cardTypes: DEFAULT_TYPES,
+    assignees: DEFAULT_ASSIGNEES,
+    groups: DEFAULT_GROUPS,
+  },
 };
 
 export function useRoadmapData() {
@@ -187,10 +135,19 @@ export function useRoadmapData() {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        // Merge with defaults to ensure new fields exist
+        return {
+          ...DEFAULT_DATA,
+          ...parsed,
+          settings: {
+            ...DEFAULT_DATA.settings,
+            ...(parsed.settings || {}),
+          },
+        };
       }
     } catch (e) {
-      console.error('Failed to load roadmap data', e);
+      console.error('Failed to load data', e);
     }
     return DEFAULT_DATA;
   });
@@ -199,63 +156,100 @@ export function useRoadmapData() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
 
-  const addEpic = useCallback((epic: Omit<Epic, 'id' | 'stories'>) => {
-    const newEpic: Epic = {
-      ...epic,
-      id: `epic-${Date.now()}`,
-      stories: [],
-    };
-    setData(prev => ({ ...prev, epics: [...prev.epics, newEpic] }));
+  const addCard = useCallback((card: Omit<Card, 'id'>) => {
+    const newCard: Card = { ...card, id: `c-${Date.now()}` };
+    setData(prev => ({ ...prev, cards: [...prev.cards, newCard] }));
+    return newCard.id;
   }, []);
 
-  const updateEpic = useCallback((id: string, updates: Partial<Epic>) => {
+  const updateCard = useCallback((id: string, updates: Partial<Card>) => {
     setData(prev => ({
       ...prev,
-      epics: prev.epics.map(e => e.id === id ? { ...e, ...updates } : e),
+      cards: prev.cards.map(c => c.id === id ? { ...c, ...updates } : c),
     }));
   }, []);
 
-  const deleteEpic = useCallback((id: string) => {
+  const deleteCard = useCallback((id: string) => {
     setData(prev => ({
       ...prev,
-      epics: prev.epics.filter(e => e.id !== id),
+      cards: prev.cards.filter(c => c.id !== id),
     }));
   }, []);
 
-  const addStory = useCallback((story: Omit<Story, 'id'>) => {
-    const newStory: Story = {
-      ...story,
-      id: `story-${Date.now()}`,
-    };
+  // Settings
+  const addCardType = useCallback((type: Omit<CardType, 'id'>) => {
+    const newType: CardType = { ...type, id: `type-${Date.now()}` };
     setData(prev => ({
       ...prev,
-      epics: prev.epics.map(e =>
-        e.id === story.epicId
-          ? { ...e, stories: [...e.stories, newStory] }
-          : e
-      ),
+      settings: { ...prev.settings, cardTypes: [...prev.settings.cardTypes, newType] },
     }));
   }, []);
 
-  const updateStory = useCallback((epicId: string, storyId: string, updates: Partial<Story>) => {
+  const updateCardType = useCallback((id: string, updates: Partial<CardType>) => {
     setData(prev => ({
       ...prev,
-      epics: prev.epics.map(e =>
-        e.id === epicId
-          ? { ...e, stories: e.stories.map(s => s.id === storyId ? { ...s, ...updates } : s) }
-          : e
-      ),
+      settings: {
+        ...prev.settings,
+        cardTypes: prev.settings.cardTypes.map(t => t.id === id ? { ...t, ...updates } : t),
+      },
     }));
   }, []);
 
-  const deleteStory = useCallback((epicId: string, storyId: string) => {
+  const deleteCardType = useCallback((id: string) => {
     setData(prev => ({
       ...prev,
-      epics: prev.epics.map(e =>
-        e.id === epicId
-          ? { ...e, stories: e.stories.filter(s => s.id !== storyId) }
-          : e
-      ),
+      settings: { ...prev.settings, cardTypes: prev.settings.cardTypes.filter(t => t.id !== id) },
+    }));
+  }, []);
+
+  const addAssignee = useCallback((assignee: Omit<Assignee, 'id'>) => {
+    const newAssignee: Assignee = { ...assignee, id: `a-${Date.now()}` };
+    setData(prev => ({
+      ...prev,
+      settings: { ...prev.settings, assignees: [...prev.settings.assignees, newAssignee] },
+    }));
+  }, []);
+
+  const updateAssignee = useCallback((id: string, updates: Partial<Assignee>) => {
+    setData(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        assignees: prev.settings.assignees.map(a => a.id === id ? { ...a, ...updates } : a),
+      },
+    }));
+  }, []);
+
+  const deleteAssignee = useCallback((id: string) => {
+    setData(prev => ({
+      ...prev,
+      settings: { ...prev.settings, assignees: prev.settings.assignees.filter(a => a.id !== id) },
+    }));
+  }, []);
+
+  const addGroup = useCallback((group: Omit<CardGroup, 'id'>) => {
+    const newGroup: CardGroup = { ...group, id: `g-${Date.now()}` };
+    setData(prev => ({
+      ...prev,
+      settings: { ...prev.settings, groups: [...prev.settings.groups, newGroup] },
+    }));
+  }, []);
+
+  const updateGroup = useCallback((id: string, updates: Partial<CardGroup>) => {
+    setData(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        groups: prev.settings.groups.map(g => g.id === id ? { ...g, ...updates } : g),
+      },
+    }));
+  }, []);
+
+  const deleteGroup = useCallback((id: string) => {
+    setData(prev => ({
+      ...prev,
+      settings: { ...prev.settings, groups: prev.settings.groups.filter(g => g.id !== id) },
+      cards: prev.cards.map(c => c.groupId === id ? { ...c, groupId: undefined } : c),
     }));
   }, []);
 
@@ -265,13 +259,20 @@ export function useRoadmapData() {
 
   return {
     data,
-    setData,
-    addEpic,
-    updateEpic,
-    deleteEpic,
-    addStory,
-    updateStory,
-    deleteStory,
+    addCard,
+    updateCard,
+    deleteCard,
+    addCardType,
+    updateCardType,
+    deleteCardType,
+    addAssignee,
+    updateAssignee,
+    deleteAssignee,
+    addGroup,
+    updateGroup,
+    deleteGroup,
     resetData,
   };
 }
+
+export { TYPE_COLORS };

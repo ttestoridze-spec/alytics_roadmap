@@ -1,103 +1,86 @@
 import { useState, useMemo } from 'react';
-import { Epic, Story, ZoomLevel, Status, EPIC_COLORS, STATUS_CONFIG } from './types';
+import { Card, ZoomLevel, Status, STATUS_CONFIG, VOLUME_UNITS } from './types';
 import { useRoadmapData } from './useRoadmapData';
 import { GanttChart } from './components/GanttChart';
-import { Modal, EpicForm, StoryForm, DetailPanel } from './components/Modals';
-import { formatDate } from './utils';
+import { CardForm } from './components/CardForm';
+import { SettingsModal } from './components/SettingsModal';
+import { formatDate, daysBetween } from './utils';
 
 function App() {
   const {
     data,
-    addEpic,
-    updateEpic,
-    deleteEpic,
-    addStory,
-    updateStory,
-    deleteStory,
+    addCard,
+    updateCard,
+    deleteCard,
+    addCardType,
+    updateCardType,
+    deleteCardType,
+    addAssignee,
+    updateAssignee,
+    deleteAssignee,
+    addGroup,
+    updateGroup,
+    deleteGroup,
     resetData,
   } = useRoadmapData();
 
   const [zoom, setZoom] = useState<ZoomLevel>('week');
-  const [collapsedEpics, setCollapsedEpics] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<Status | 'all'>('all');
 
   // Modal states
-  const [showEpicModal, setShowEpicModal] = useState(false);
-  const [showStoryModal, setShowStoryModal] = useState(false);
-  const [editingEpic, setEditingEpic] = useState<Epic | null>(null);
-  const [editingStory, setEditingStory] = useState<{ epic: Epic; story: Story } | null>(null);
-  const [storyForEpic, setStoryForEpic] = useState<Epic | null>(null);
-  const [selectedEpic, setSelectedEpic] = useState<Epic | null>(null);
-  const [selectedStory, setSelectedStory] = useState<{ epic: Epic; story: Story } | null>(null);
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
 
-  // Filtered epics
-  const filteredEpics = useMemo(() => {
-    if (filterStatus === 'all') return data.epics;
-    return data.epics
-      .map(epic => ({
-        ...epic,
-        stories: epic.stories.filter(s => s.status === filterStatus),
-      }))
-      .filter(epic => epic.stories.length > 0 || epic.stories.length === 0);
-  }, [data.epics, filterStatus]);
+  // Filtered cards
+  const filteredCards = useMemo(() => {
+    let result = data.cards;
+    if (filterType !== 'all') {
+      result = result.filter(c => c.typeId === filterType);
+    }
+    if (filterStatus !== 'all') {
+      result = result.filter(c => c.status === filterStatus);
+    }
+    return result;
+  }, [data.cards, filterType, filterStatus]);
 
   // Stats
   const stats = useMemo(() => {
-    const allStories = data.epics.flatMap(e => e.stories);
+    const cards = data.cards;
     return {
-      total: allStories.length,
-      completed: allStories.filter(s => s.status === 'completed').length,
-      inProgress: allStories.filter(s => s.status === 'in_progress').length,
-      planned: allStories.filter(s => s.status === 'planned').length,
-      blocked: allStories.filter(s => s.status === 'blocked').length,
-      epics: data.epics.length,
+      total: cards.length,
+      completed: cards.filter(c => c.status === 'completed').length,
+      inProgress: cards.filter(c => c.status === 'in_progress').length,
+      planned: cards.filter(c => c.status === 'planned').length,
+      blocked: cards.filter(c => c.status === 'blocked').length,
+      totalVolume: cards.reduce((sum, c) => sum + c.volume, 0),
     };
-  }, [data.epics]);
+  }, [data.cards]);
 
-  const toggleEpicCollapse = (epicId: string) => {
-    setCollapsedEpics(prev => {
+  const toggleGroupCollapse = (groupId: string) => {
+    setCollapsedGroups(prev => {
       const next = new Set(prev);
-      if (next.has(epicId)) next.delete(epicId);
-      else next.add(epicId);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
       return next;
     });
   };
 
-  const handleEpicClick = (epic: Epic) => {
-    setSelectedEpic(epic);
-    setSelectedStory(null);
+  const handleCardClick = (card: Card) => {
+    setSelectedCard(card);
   };
 
-  const handleStoryClick = (epic: Epic, story: Story) => {
-    setSelectedStory({ epic, story });
-    setSelectedEpic(null);
-  };
-
-  const handleEpicSubmit = (formData: { title: string; description: string; color: string; startDate: string; endDate: string }) => {
-    if (editingEpic) {
-      updateEpic(editingEpic.id, formData);
+  const handleCardSubmit = (cardData: Omit<Card, 'id'>) => {
+    if (editingCard) {
+      updateCard(editingCard.id, cardData);
     } else {
-      addEpic(formData);
+      addCard(cardData);
     }
-    setShowEpicModal(false);
-    setEditingEpic(null);
-  };
-
-  const handleStorySubmit = (formData: { title: string; description: string; startDate: string; endDate: string; status: Status; priority: string; assignee: string }) => {
-    const epic = editingStory?.epic || storyForEpic;
-    if (!epic) return;
-
-    if (editingStory) {
-      updateStory(epic.id, editingStory.story.id, {
-        ...formData,
-        priority: formData.priority as import('./types').Priority,
-      });
-    } else {
-      addStory({ ...formData, epicId: epic.id, priority: formData.priority as import('./types').Priority });
-    }
-    setShowStoryModal(false);
-    setEditingStory(null);
-    setStoryForEpic(null);
+    setShowCardModal(false);
+    setEditingCard(null);
   };
 
   return (
@@ -107,8 +90,8 @@ function App() {
         <div className="max-w-[1600px] mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-cyan-400 rounded-xl flex items-center justify-center font-bold text-sm shadow-lg shadow-purple-500/20">
-                SA
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-cyan-400 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg shadow-purple-500/20">
+                A
               </div>
               <div>
                 <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
@@ -117,54 +100,80 @@ function App() {
                 <p className="text-xs text-gray-500">{data.projectDescription}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => { setEditingEpic(null); setShowEpicModal(true); }}
+                onClick={() => setShowSettings(true)}
+                className="bg-gray-800 border border-gray-700 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-700 transition-colors flex items-center gap-2"
+              >
+                ⚙️ Настройки
+              </button>
+              <button
+                onClick={() => { setEditingCard(null); setShowCardModal(true); }}
                 className="bg-gradient-to-r from-purple-600 to-cyan-500 px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
               >
-                <span>+</span> Новый эпик
+                <span>+</span> Новая карточка
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Stats bar */}
+      {/* Filters & Stats bar */}
       <div className="border-b border-gray-800 bg-gray-900/30">
         <div className="max-w-[1600px] mx-auto px-6 py-3">
-          <div className="flex items-center gap-6 overflow-x-auto">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Всего:</span>
-              <span className="text-sm font-medium text-white">{stats.total} задач</span>
-            </div>
-            <div className="w-px h-4 bg-gray-700"></div>
-            {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-              const count = key === 'completed' ? stats.completed
-                : key === 'in_progress' ? stats.inProgress
-                : key === 'planned' ? stats.planned
-                : stats.blocked;
-              return (
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Type filter */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-500 mr-1">Тип:</span>
+              <button
+                onClick={() => setFilterType('all')}
+                className={`px-2 py-1 rounded-md text-xs transition-all ${filterType === 'all' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}
+              >
+                Все
+              </button>
+              {data.settings.cardTypes.map(type => (
                 <button
-                  key={key}
-                  onClick={() => setFilterStatus(filterStatus === key ? 'all' : key as Status)}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-all ${
-                    filterStatus === key ? 'bg-gray-800 ring-1 ring-gray-600' : 'hover:bg-gray-800/50'
-                  }`}
+                  key={type.id}
+                  onClick={() => setFilterType(filterType === type.id ? 'all' : type.id)}
+                  className={`px-2 py-1 rounded-md text-xs transition-all flex items-center gap-1 ${filterType === type.id ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}
                 >
-                  <span>{config.icon}</span>
-                  <span className={config.color}>{count}</span>
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: type.color }}></span>
+                  {type.name}
                 </button>
-              );
-            })}
-            {filterStatus !== 'all' && (
+              ))}
+            </div>
+
+            <div className="w-px h-4 bg-gray-700"></div>
+
+            {/* Status filter */}
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => setFilterStatus('all')}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                className={`px-2 py-1 rounded-md text-xs transition-all ${filterStatus === 'all' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}
               >
-                ✕ Сбросить
+                Все
               </button>
-            )}
+              {Object.entries(STATUS_CONFIG).map(([key, config]) => {
+                const count = key === 'completed' ? stats.completed
+                  : key === 'in_progress' ? stats.inProgress
+                  : key === 'planned' ? stats.planned
+                  : stats.blocked;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setFilterStatus(filterStatus === key ? 'all' : key as Status)}
+                    className={`px-2 py-1 rounded-md text-xs transition-all flex items-center gap-1 ${filterStatus === key ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}`}
+                  >
+                    <span>{config.icon}</span>
+                    <span>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="flex-1"></div>
+
+            {/* Zoom */}
             <div className="flex items-center gap-1 bg-gray-800/50 rounded-lg p-1">
               {(['day', 'week', 'month'] as ZoomLevel[]).map(z => (
                 <button
@@ -184,44 +193,35 @@ function App() {
 
       {/* Main content */}
       <main className="max-w-[1600px] mx-auto px-6 py-6">
-        {/* Progress overview */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-500">Прогресс</span>
-              <span className="text-xs text-purple-400">{stats.epics} эпиков</span>
-            </div>
-            <div className="text-2xl font-bold">{stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%</div>
-            <div className="mt-2 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-purple-500 to-cyan-500 rounded-full transition-all duration-500"
-                style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }}
-              ></div>
-            </div>
+            <div className="text-xs text-gray-500 mb-1">Всего задач</div>
+            <div className="text-2xl font-bold">{stats.total}</div>
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-500">В работе</span>
-              <span className="text-yellow-400">🔄</span>
-            </div>
+            <div className="text-xs text-gray-500 mb-1">В работе</div>
             <div className="text-2xl font-bold text-yellow-400">{stats.inProgress}</div>
-            <p className="text-xs text-gray-500 mt-1">активных задач</p>
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-500">Завершено</span>
-              <span className="text-green-400">✅</span>
-            </div>
+            <div className="text-xs text-gray-500 mb-1">Завершено</div>
             <div className="text-2xl font-bold text-green-400">{stats.completed}</div>
-            <p className="text-xs text-gray-500 mt-1">из {stats.total} задач</p>
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-500">Заблокировано</span>
-              <span className="text-red-400">🚫</span>
-            </div>
+            <div className="text-xs text-gray-500 mb-1">Заблокировано</div>
             <div className="text-2xl font-bold text-red-400">{stats.blocked}</div>
-            <p className="text-xs text-gray-500 mt-1">требуют внимания</p>
+          </div>
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+            <div className="text-xs text-gray-500 mb-1">Прогресс</div>
+            <div className="flex items-center gap-2">
+              <div className="text-2xl font-bold">{stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%</div>
+              <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-500 to-cyan-500 rounded-full transition-all"
+                  style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }}
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -230,86 +230,115 @@ function App() {
           <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold">Временная шкала</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Нажмите на задачу для подробностей • ▶ для сворачивания эпика</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Перетаскивайте карточки для перемещения • Тяните за края для изменения длительности • Клик для деталей
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded-sm bg-red-500/60"></div>
                 <span>Сегодня</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px]">◀ ▶</span>
+                <span>Resize</span>
               </div>
             </div>
           </div>
           <div className="p-4">
-            {data.epics.length === 0 ? (
+            {data.cards.length === 0 ? (
               <div className="text-center py-20">
                 <div className="text-4xl mb-4">📋</div>
                 <h3 className="text-lg font-medium text-gray-300 mb-2">Роадмап пуст</h3>
-                <p className="text-gray-500 mb-6">Добавьте первый эпик, чтобы начать планирование</p>
+                <p className="text-gray-500 mb-6">Создайте первую карточку для начала планирования</p>
                 <button
-                  onClick={() => { setEditingEpic(null); setShowEpicModal(true); }}
+                  onClick={() => { setEditingCard(null); setShowCardModal(true); }}
                   className="bg-gradient-to-r from-purple-600 to-cyan-500 px-6 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
                 >
-                  + Создать эпик
+                  + Создать карточку
                 </button>
               </div>
             ) : (
               <GanttChart
-                epics={filteredEpics}
+                cards={filteredCards}
+                cardTypes={data.settings.cardTypes}
+                assignees={data.settings.assignees}
+                groups={data.settings.groups}
                 zoom={zoom}
-                onEpicClick={handleEpicClick}
-                onStoryClick={handleStoryClick}
-                collapsedEpics={collapsedEpics}
-                toggleEpicCollapse={toggleEpicCollapse}
+                onCardClick={handleCardClick}
+                onCardUpdate={updateCard}
+                collapsedGroups={collapsedGroups}
+                toggleGroupCollapse={toggleGroupCollapse}
               />
             )}
           </div>
         </div>
 
-        {/* Epics list (mobile-friendly) */}
-        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {data.epics.map(epic => {
-            const completedCount = epic.stories.filter(s => s.status === 'completed').length;
-            const totalCount = epic.stories.length;
-            const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+        {/* Cards list */}
+        <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {filteredCards.map(card => {
+            const type = data.settings.cardTypes.find(t => t.id === card.typeId);
+            const assignee = data.settings.assignees.find(a => a.id === card.assigneeId);
+            const group = data.settings.groups.find(g => g.id === card.groupId);
+            const duration = daysBetween(card.startDate, card.endDate);
 
             return (
               <div
-                key={epic.id}
-                className="bg-gray-900/50 border border-gray-800 rounded-xl p-5 hover:border-gray-700 transition-all cursor-pointer group"
-                onClick={() => handleEpicClick(epic)}
+                key={card.id}
+                onClick={() => handleCardClick(card)}
+                className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-all cursor-pointer group"
               >
-                <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: epic.color }}></div>
-                    <h3 className="font-medium text-sm group-hover:text-purple-300 transition-colors">{epic.title}</h3>
+                    {type && (
+                      <div className="w-6 h-6 rounded flex items-center justify-center text-xs" style={{ backgroundColor: `${type.color}30` }}>
+                        {type.icon}
+                      </div>
+                    )}
+                    <h3 className="text-sm font-medium text-gray-200 group-hover:text-purple-300 transition-colors line-clamp-1">
+                      {card.title}
+                    </h3>
                   </div>
-                  <span className="text-xs text-gray-500">{completedCount}/{totalCount}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_CONFIG[card.status].color} bg-gray-800`}>
+                    {STATUS_CONFIG[card.status].icon}
+                  </span>
                 </div>
-                <p className="text-xs text-gray-500 mb-3 line-clamp-2">{epic.description}</p>
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                  <span>{formatDate(epic.startDate)}</span>
-                  <span>{formatDate(epic.endDate)}</span>
+
+                {group && (
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: group.color }}></div>
+                    <span className="text-[10px] text-gray-500 truncate">{group.name}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 text-[11px] text-gray-500 mb-2">
+                  <span>{formatDate(card.startDate)}</span>
+                  <span>→</span>
+                  <span>{formatDate(card.endDate)}</span>
+                  <span className="text-gray-600">({duration}д)</span>
                 </div>
-                <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${progress}%`, backgroundColor: epic.color }}
-                  ></div>
-                </div>
-                <div className="flex items-center gap-1 mt-3 flex-wrap">
-                  {epic.stories.slice(0, 4).map(story => (
-                    <div
-                      key={story.id}
-                      className={`w-2 h-2 rounded-full ${
-                        story.status === 'completed' ? 'bg-green-500' :
-                        story.status === 'in_progress' ? 'bg-yellow-500' :
-                        story.status === 'blocked' ? 'bg-red-500' : 'bg-blue-500'
-                      }`}
-                      title={story.title}
-                    ></div>
-                  ))}
-                  {epic.stories.length > 4 && (
-                    <span className="text-[10px] text-gray-500">+{epic.stories.length - 4}</span>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 bg-gray-800 px-2 py-0.5 rounded">
+                      {card.volume} {VOLUME_UNITS[card.volumeUnit].short}
+                    </span>
+                    {assignee && (
+                      <span className="text-xs text-gray-400" title={assignee.name}>
+                        {assignee.emoji}
+                      </span>
+                    )}
+                  </div>
+                  {card.jiraLink && (
+                    <a
+                      href={card.jiraLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs text-gray-500 hover:text-purple-400 transition-colors"
+                    >
+                      🔗 Jira
+                    </a>
                   )}
                 </div>
               </div>
@@ -317,11 +346,9 @@ function App() {
           })}
         </div>
 
-        {/* Footer actions */}
+        {/* Footer */}
         <div className="mt-8 flex items-center justify-between">
-          <p className="text-xs text-gray-600">
-            Данные сохраняются локально в браузере
-          </p>
+          <p className="text-xs text-gray-600">Данные сохраняются локально в браузере</p>
           <button
             onClick={() => {
               if (confirm('Сбросить все данные к примеру? Это действие нельзя отменить.')) {
@@ -335,67 +362,169 @@ function App() {
         </div>
       </main>
 
-      {/* Modals */}
-      <Modal
-        isOpen={showEpicModal}
-        onClose={() => { setShowEpicModal(false); setEditingEpic(null); }}
-        title={editingEpic ? 'Редактировать эпик' : 'Новый эпик'}
-      >
-        <EpicForm
-          onSubmit={handleEpicSubmit}
-          onCancel={() => { setShowEpicModal(false); setEditingEpic(null); }}
-          initialData={editingEpic ? { title: editingEpic.title, description: editingEpic.description, color: editingEpic.color, startDate: editingEpic.startDate, endDate: editingEpic.endDate } : undefined}
-          colors={EPIC_COLORS}
-        />
-      </Modal>
+      {/* Card Form Modal */}
+      {showCardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setShowCardModal(false); setEditingCard(null); }}></div>
+          <div className="relative bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-gray-900 border-b border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+              <h3 className="text-xl font-bold text-white">{editingCard ? 'Редактировать карточку' : 'Новая карточка'}</h3>
+              <button
+                onClick={() => { setShowCardModal(false); setEditingCard(null); }}
+                className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6">
+              <CardForm
+                onSubmit={handleCardSubmit}
+                onCancel={() => { setShowCardModal(false); setEditingCard(null); }}
+                cardTypes={data.settings.cardTypes}
+                assignees={data.settings.assignees}
+                groups={data.settings.groups}
+                initialData={editingCard || undefined}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
-      <Modal
-        isOpen={showStoryModal}
-        onClose={() => { setShowStoryModal(false); setEditingStory(null); setStoryForEpic(null); }}
-        title={editingStory ? 'Редактировать задачу' : 'Новая задача'}
-      >
-        {(editingStory?.epic || storyForEpic) && (
-          <StoryForm
-            onSubmit={handleStorySubmit}
-            onCancel={() => { setShowStoryModal(false); setEditingStory(null); setStoryForEpic(null); }}
-            epic={editingStory?.epic || storyForEpic!}
-            initialData={editingStory?.story}
-          />
-        )}
-      </Modal>
+      {/* Card Detail Modal */}
+      {selectedCard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelectedCard(null)}></div>
+          <div className="relative bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md">
+            {(() => {
+              const type = data.settings.cardTypes.find(t => t.id === selectedCard.typeId);
+              const assignee = data.settings.assignees.find(a => a.id === selectedCard.assigneeId);
+              const group = data.settings.groups.find(g => g.id === selectedCard.groupId);
+              const duration = daysBetween(selectedCard.startDate, selectedCard.endDate);
 
-      {/* Detail Panel */}
-      <DetailPanel
-        epic={selectedEpic}
-        story={selectedStory?.story || null}
-        onClose={() => { setSelectedEpic(null); setSelectedStory(null); }}
-        onEditEpic={selectedEpic ? () => {
-          setEditingEpic(selectedEpic);
-          setShowEpicModal(true);
-          setSelectedEpic(null);
-        } : undefined}
-        onDeleteEpic={selectedEpic ? () => {
-          if (confirm(`Удалить эпик "${selectedEpic.title}" и все его задачи?`)) {
-            deleteEpic(selectedEpic.id);
-            setSelectedEpic(null);
-          }
-        } : undefined}
-        onEditStory={selectedStory ? () => {
-          setEditingStory(selectedStory);
-          setShowStoryModal(true);
-          setSelectedStory(null);
-        } : undefined}
-        onDeleteStory={selectedStory ? () => {
-          if (confirm(`Удалить задачу "${selectedStory.story.title}"?`)) {
-            deleteStory(selectedStory.epic.id, selectedStory.story.id);
-            setSelectedStory(null);
-          }
-        } : undefined}
-        onAddStory={selectedEpic ? () => {
-          setStoryForEpic(selectedEpic);
-          setShowStoryModal(true);
-          setSelectedEpic(null);
-        } : undefined}
+              return (
+                <>
+                  <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {type && (
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-lg" style={{ backgroundColor: `${type.color}30` }}>
+                          {type.icon}
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-lg font-bold text-white">{selectedCard.title}</h3>
+                        {type && <p className="text-xs text-gray-500">{type.name}</p>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedCard(null)}
+                      className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    {selectedCard.description && (
+                      <p className="text-gray-400 text-sm">{selectedCard.description}</p>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Начало</p>
+                        <p className="text-sm text-white font-medium">{formatDate(selectedCard.startDate)}</p>
+                      </div>
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Конец</p>
+                        <p className="text-sm text-white font-medium">{formatDate(selectedCard.endDate)}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Объём</p>
+                        <p className="text-sm text-white font-medium">{selectedCard.volume} {VOLUME_UNITS[selectedCard.volumeUnit].label}</p>
+                      </div>
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Длительность</p>
+                        <p className="text-sm text-white font-medium">{duration} дней</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_CONFIG[selectedCard.status].bg}/20 ${STATUS_CONFIG[selectedCard.status].color}`}>
+                        {STATUS_CONFIG[selectedCard.status].icon} {STATUS_CONFIG[selectedCard.status].label}
+                      </div>
+                      {assignee && (
+                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-gray-800 text-gray-300">
+                          {assignee.emoji} {assignee.name}
+                        </div>
+                      )}
+                      {group && (
+                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-gray-800 text-gray-300 flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: group.color }}></div>
+                          {group.name}
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedCard.jiraLink && (
+                      <a
+                        href={selectedCard.jiraLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 transition-colors bg-purple-500/10 rounded-lg px-3 py-2"
+                      >
+                        🔗 Открыть в Jira
+                        <span className="text-xs text-gray-500 truncate">{selectedCard.jiraLink}</span>
+                      </a>
+                    )}
+
+                    <div className="flex gap-2 pt-4 border-t border-gray-700">
+                      <button
+                        onClick={() => {
+                          setEditingCard(selectedCard);
+                          setShowCardModal(true);
+                          setSelectedCard(null);
+                        }}
+                        className="flex-1 bg-gray-800 border border-gray-700 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                      >
+                        ✏️ Редактировать
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Удалить карточку "${selectedCard.title}"?`)) {
+                            deleteCard(selectedCard.id);
+                            setSelectedCard(null);
+                          }
+                        }}
+                        className="flex-1 bg-red-500/10 border border-red-500/30 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                      >
+                        🗑️ Удалить
+                      </button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        cardTypes={data.settings.cardTypes}
+        assignees={data.settings.assignees}
+        groups={data.settings.groups}
+        onAddCardType={addCardType}
+        onUpdateCardType={updateCardType}
+        onDeleteCardType={deleteCardType}
+        onAddAssignee={addAssignee}
+        onUpdateAssignee={updateAssignee}
+        onDeleteAssignee={deleteAssignee}
+        onAddGroup={addGroup}
+        onUpdateGroup={updateGroup}
+        onDeleteGroup={deleteGroup}
       />
     </div>
   );

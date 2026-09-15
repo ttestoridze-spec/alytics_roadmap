@@ -1,54 +1,17 @@
 import { ZoomLevel } from './types';
 
-export function daysBetween(start: string, end: string): number {
-  const s = new Date(start);
-  const e = new Date(end);
-  const diff = e.getTime() - s.getTime();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
-}
-
-export function addDays(date: string, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-export function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-export function formatDateShort(date: string): string {
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-  });
-}
-
-export function getTimelineRange(epics: { startDate: string; endDate: string; stories: { startDate: string; endDate: string }[] }[]) {
+export function getTimelineRange(items: { startDate: string; endDate: string }[]) {
   let minDate = new Date('2099-01-01');
   let maxDate = new Date('2000-01-01');
-
   const padDays = 15;
 
-  epics.forEach(epic => {
-    const es = new Date(epic.startDate);
-    const ee = new Date(epic.endDate);
-    if (es < minDate) minDate = es;
-    if (ee > maxDate) maxDate = ee;
-
-    epic.stories.forEach(story => {
-      const ss = new Date(story.startDate);
-      const se = new Date(story.endDate);
-      if (ss < minDate) minDate = ss;
-      if (se > maxDate) maxDate = se;
-    });
+  items.forEach(item => {
+    const s = new Date(item.startDate);
+    const e = new Date(item.endDate);
+    if (s < minDate) minDate = s;
+    if (e > maxDate) maxDate = e;
   });
 
-  // Add padding
   minDate = new Date(minDate);
   minDate.setDate(minDate.getDate() - padDays);
   maxDate = new Date(maxDate);
@@ -63,7 +26,6 @@ export function getTimelineTicks(minDate: Date, maxDate: Date, zoom: ZoomLevel):
 
   if (zoom === 'day') {
     while (current <= maxDate) {
-      const isMonday = current.getDay() === 1;
       const isFirst = current.getDate() === 1;
       ticks.push({
         date: new Date(current),
@@ -73,7 +35,6 @@ export function getTimelineTicks(minDate: Date, maxDate: Date, zoom: ZoomLevel):
       current.setDate(current.getDate() + 1);
     }
   } else if (zoom === 'week') {
-    // Align to Monday
     while (current.getDay() !== 1) current.setDate(current.getDate() - 1);
     while (current <= maxDate) {
       const isFirst = current.getDate() <= 7;
@@ -114,6 +75,23 @@ export function getWidthForRange(start: string, end: string, minDate: Date, tota
   return Math.max((days / totalDays) * 100, 0.5);
 }
 
-export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+export function formatDate(date: string): string {
+  return new Date(date).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+export function formatDateShort(date: string): string {
+  return new Date(date).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
+export function daysBetween(start: string, end: string): number {
+  const s = new Date(start);
+  const e = new Date(end);
+  return Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
 }
