@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Card, CardType, Assignee, CardGroup, ZoomLevel, STATUS_CONFIG, VOLUME_UNITS } from '../types';
 import {
-  getTimelineRange,
   getTimelineTicks,
   getPositionForDate,
   getWidthForRange,
   formatDateShort,
+  addDays,
+  formatMonthYear,
 } from '../utils';
 
 interface GanttChartProps {
@@ -14,6 +15,9 @@ interface GanttChartProps {
   assignees: Assignee[];
   groups: CardGroup[];
   zoom: ZoomLevel;
+  viewStart: Date;
+  viewEnd: Date;
+  onViewChange: (start: Date, end: Date) => void;
   onCardClick: (card: Card) => void;
   onCardUpdate: (id: string, updates: Partial<Card>) => void;
   collapsedGroups: Set<string>;
@@ -28,6 +32,9 @@ export function GanttChart({
   assignees,
   groups,
   zoom,
+  viewStart,
+  viewEnd,
+  onViewChange,
   onCardClick,
   onCardUpdate,
   collapsedGroups,
@@ -37,7 +44,6 @@ export function GanttChart({
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; card: Card } | null>(null);
 
-  // Drag state
   const [dragState, setDragState] = useState<{
     mode: DragMode;
     cardId: string;
@@ -46,14 +52,12 @@ export function GanttChart({
     originalEnd: string;
   } | null>(null);
 
-  const { minDate, maxDate } = useMemo(() => getTimelineRange(cards), [cards]);
   const totalDays = useMemo(() => {
-    return (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24);
-  }, [minDate, maxDate]);
+    return (viewEnd.getTime() - viewStart.getTime()) / (1000 * 60 * 60 * 24);
+  }, [viewStart, viewEnd]);
 
-  const ticks = useMemo(() => getTimelineTicks(minDate, maxDate, zoom), [minDate, maxDate, zoom]);
+  const ticks = useMemo(() => getTimelineTicks(viewStart, viewEnd, zoom), [viewStart, viewEnd, zoom]);
 
-  // Build rows: groups + cards
   const rows = useMemo(() => {
     const result: ({ type: 'group'; group: CardGroup } | { type: 'card'; card: Card })[] = [];
     const groupedCards = new Map<string, Card[]>();
@@ -82,13 +86,25 @@ export function GanttChart({
   }, [cards, groups, collapsedGroups]);
 
   const today = new Date();
-  const todayPosition = getPositionForDate(today, minDate, totalDays);
+  const todayPosition = getPositionForDate(today, viewStart, totalDays);
 
   const getTypeColor = (typeId: string) => {
     return cardTypes.find(t => t.id === typeId)?.color || '#6b7280';
   };
 
-  // Drag handlers
+  // Колёсиком мыши — paging по времени
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    // Шаг: 1 неделя при обычном скролле, 1 день при shift
+    const stepDays = e.shiftKey ? 1 : 7;
+    const direction = e.deltaY > 0 ? 1 : -1;
+    
+    const newStart = addDays(viewStart, stepDays * direction);
+    const newEnd = addDays(viewEnd, stepDays * direction);
+    onViewChange(newStart, newEnd);
+  };
+
+  // Drag handlers для карточек
   const handleMouseDown = useCallback((e: React.MouseEvent, cardId: string, mode: DragMode) => {
     e.stopPropagation();
     e.preventDefault();
@@ -195,17 +211,32 @@ export function GanttChart({
           <div className="text-gray-400 mt-1">
             {tooltip.card.volume} {VOLUME_UNITS[tooltip.card.volumeUnit].short} • {STATUS_CONFIG[tooltip.card.status].icon} {STATUS_CONFIG[tooltip.card.status].label}
           </div>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[10px] text-gray-500">Приоритет:</span>
+            <span className={`text-[10px] font-medium ${
+              tooltip.card.priority === 'critical' ? 'text-red-400' :
+              tooltip.card.priority === 'high' ? 'text-orange-400' :
+              tooltip.card.priority === 'medium' ? 'text-blue-400' : 'text-gray-400'
+            }`}>
+              {tooltip.card.priority === 'critical' ? '🔴 Критический' :
+               tooltip.card.priority === 'high' ? '🟠 Высокий' :
+               tooltip.card.priority === 'medium' ? '🔵 Средний' : '⚪ Низкий'}
+            </span>
+          </div>
           <div className="text-gray-500 mt-1 text-[10px]">Перетащите для перемещения • Потяните за края для изменения длительности</div>
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <div className="min-w-[800px]" style={{ width: '100%' }}>
+      <div
+        className="overflow-hidden"
+        onWheel={handleWheel}
+      >
+        <div style={{ width: '100%' }}>
           {/* Time header */}
           <div className="relative border-b border-gray-700/50" style={{ height: HEADER_HEIGHT }}>
             <div className="absolute top-0 left-0 right-0 h-8 flex items-center">
               {ticks.filter(t => t.isMajor).map((tick, i) => {
-                const pos = getPositionForDate(tick.date, minDate, totalDays);
+                const pos = getPositionForDate(tick.date, viewStart, totalDays);
                 return (
                   <div
                     key={i}
@@ -219,7 +250,7 @@ export function GanttChart({
             </div>
             <div className="absolute bottom-0 left-0 right-0 h-8 flex items-end pb-2">
               {ticks.map((tick, i) => {
-                const pos = getPositionForDate(tick.date, minDate, totalDays);
+                const pos = getPositionForDate(tick.date, viewStart, totalDays);
                 return (
                   <div
                     key={i}
@@ -232,7 +263,7 @@ export function GanttChart({
               })}
             </div>
             {ticks.map((tick, i) => {
-              const pos = getPositionForDate(tick.date, minDate, totalDays);
+              const pos = getPositionForDate(tick.date, viewStart, totalDays);
               return (
                 <div
                   key={i}
@@ -260,7 +291,7 @@ export function GanttChart({
 
             {/* Grid lines */}
             {ticks.map((tick, i) => {
-              const pos = getPositionForDate(tick.date, minDate, totalDays);
+              const pos = getPositionForDate(tick.date, viewStart, totalDays);
               return (
                 <div
                   key={i}
@@ -295,13 +326,16 @@ export function GanttChart({
                 );
               } else {
                 const { card } = row;
-                const left = getPositionForDate(new Date(card.startDate), minDate, totalDays);
-                const width = getWidthForRange(card.startDate, card.endDate, minDate, totalDays);
+                const left = getPositionForDate(new Date(card.startDate), viewStart, totalDays);
+                const width = getWidthForRange(card.startDate, card.endDate, viewStart, totalDays);
                 const color = getTypeColor(card.typeId);
                 const isHovered = hoveredCard === card.id;
                 const isDragging = dragState?.cardId === card.id;
                 const statusConfig = STATUS_CONFIG[card.status];
                 const assignee = assignees.find(a => a.id === card.assigneeId);
+
+                // Не показываем карточки, которые полностью за пределами видимой области
+                if (left + width < 0 || left > 100) return null;
 
                 return (
                   <div
@@ -313,12 +347,12 @@ export function GanttChart({
 
                     {/* Card bar */}
                     <div
-                      className={`absolute h-8 rounded-lg flex items-center overflow-hidden transition-shadow ${
+                      className={`gantt-card absolute h-8 rounded-lg flex items-center overflow-hidden transition-shadow ${
                         isDragging ? 'opacity-90 shadow-2xl z-30' : isHovered ? 'shadow-lg z-20' : 'z-10'
                       } ${dragState?.mode === 'move' ? 'cursor-grabbing' : 'cursor-grab'}`}
                       style={{
-                        left: `${left}%`,
-                        width: `${Math.max(width, 2)}%`,
+                        left: `${Math.max(0, left)}%`,
+                        width: `${Math.min(width, 100 - Math.max(0, left))}%`,
                         backgroundColor: `${color}25`,
                         border: `1.5px solid ${color}90`,
                       }}
@@ -332,13 +366,23 @@ export function GanttChart({
                       onMouseEnter={(e) => handleCardHover(e, card)}
                       onMouseLeave={handleCardLeave}
                     >
-                      {/* Status indicator */}
+                      {/* Status indicator (left) */}
                       <div
                         className="absolute left-0 top-0 bottom-0 w-1"
                         style={{
                           backgroundColor: statusConfig.bg.includes('green') ? '#22c55e' :
                             statusConfig.bg.includes('yellow') ? '#eab308' :
                             statusConfig.bg.includes('red') ? '#ef4444' : '#3b82f6'
+                        }}
+                      ></div>
+
+                      {/* Priority indicator (top) */}
+                      <div
+                        className="absolute left-1 right-1 top-0 h-0.5 rounded-full"
+                        style={{
+                          backgroundColor: card.priority === 'critical' ? '#ef4444' :
+                            card.priority === 'high' ? '#f97316' :
+                            card.priority === 'medium' ? '#3b82f6' : '#6b7280'
                         }}
                       ></div>
 

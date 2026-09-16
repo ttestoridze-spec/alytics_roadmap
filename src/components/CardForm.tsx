@@ -2,8 +2,25 @@ import { useState } from 'react';
 import { Card, CardType, Assignee, CardGroup, Status, Priority, VolumeUnit, STATUS_CONFIG, PRIORITY_CONFIG, VOLUME_UNITS } from '../types';
 import { daysBetween } from '../utils';
 
+function calculateEndDate(startDate: string, volume: number, unit: VolumeUnit): string {
+  const start = new Date(startDate);
+  let daysToAdd = 0;
+
+  switch (unit) {
+    case 'hours': daysToAdd = Math.ceil(volume / 8); break;
+    case 'days': daysToAdd = volume; break;
+    case 'weeks': daysToAdd = volume * 7; break;
+    case 'story_points': daysToAdd = Math.ceil(volume * 0.5); break;
+  }
+
+  daysToAdd = Math.max(daysToAdd, 1);
+  const end = new Date(start);
+  end.setDate(end.getDate() + daysToAdd);
+  return end.toISOString().split('T')[0];
+}
+
 interface CardFormProps {
-  onSubmit: (card: Omit<Card, 'id'>) => void;
+  onSubmit: (card: Omit<Card, 'id' | 'order'>) => void;
   onCancel: () => void;
   cardTypes: CardType[];
   assignees: Assignee[];
@@ -20,18 +37,25 @@ export function CardForm({ onSubmit, onCancel, cardTypes, assignees, groups, ini
     startDate: initialData?.startDate || new Date().toISOString().split('T')[0],
     endDate: initialData?.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     volume: initialData?.volume || 5,
-    volumeUnit: initialData?.volumeUnit || 'days' as VolumeUnit,
+    volumeUnit: (initialData?.volumeUnit || 'days') as VolumeUnit,
     jiraLink: initialData?.jiraLink || '',
     assigneeId: initialData?.assigneeId || '',
-    status: initialData?.status || 'planned' as Status,
-    priority: initialData?.priority || 'medium' as Priority,
+    status: (initialData?.status || 'planned') as Status,
+    priority: (initialData?.priority || 'medium') as Priority,
   });
+
+  const [autoResize, setAutoResize] = useState(!initialData);
+
+  const calculatedEndDate = calculateEndDate(form.startDate, form.volume, form.volumeUnit);
+  const endDateDiffers = calculatedEndDate !== form.endDate;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) return;
+    const finalEndDate = autoResize ? calculatedEndDate : form.endDate;
     onSubmit({
       ...form,
+      endDate: finalEndDate,
       groupId: form.groupId || undefined,
       jiraLink: form.jiraLink || undefined,
       assigneeId: form.assigneeId || undefined,
@@ -62,7 +86,6 @@ export function CardForm({ onSubmit, onCancel, cardTypes, assignees, groups, ini
           onChange={e => setForm({ ...form, description: e.target.value })}
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none transition-colors resize-none"
           rows={2}
-          placeholder="Детали задачи"
         />
       </div>
 
@@ -113,6 +136,7 @@ export function CardForm({ onSubmit, onCancel, cardTypes, assignees, groups, ini
             onChange={e => setForm({ ...form, endDate: e.target.value })}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:border-purple-500 focus:outline-none transition-colors"
             required
+            disabled={autoResize}
           />
         </div>
       </div>
@@ -142,6 +166,11 @@ export function CardForm({ onSubmit, onCancel, cardTypes, assignees, groups, ini
               ))}
             </select>
           </div>
+          {autoResize && endDateDiffers && (
+            <div className="mt-2 text-xs text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 rounded px-2 py-1.5">
+              📏 Карточка растянется на {daysBetween(form.startDate, calculatedEndDate)} дн. → до {new Date(calculatedEndDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+            </div>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">Ответственный</label>
@@ -194,6 +223,25 @@ export function CardForm({ onSubmit, onCancel, cardTypes, assignees, groups, ini
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between bg-gray-800/50 border border-gray-700/50 rounded-lg px-4 py-3">
+        <div>
+          <div className="text-sm font-medium text-gray-200">📐 Авторасчёт размера</div>
+          <div className="text-xs text-gray-500">
+            {autoResize ? 'Длительность карточки = объём задачи' : 'Даты задаются вручную'}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setAutoResize(!autoResize)}
+          className={`relative w-11 h-6 rounded-full transition-colors ${autoResize ? 'bg-purple-500' : 'bg-gray-700'}`}
+        >
+          <div
+            className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform"
+            style={{ transform: autoResize ? 'translateX(22px)' : 'translateX(0)' }}
+          ></div>
+        </button>
       </div>
 
       <div className="flex gap-3 pt-4">

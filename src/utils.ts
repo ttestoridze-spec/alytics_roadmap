@@ -1,5 +1,3 @@
-import { ZoomLevel } from './types';
-
 export function getTimelineRange(items: { startDate: string; endDate: string }[]) {
   let minDate = new Date('2099-01-01');
   let maxDate = new Date('2000-01-01');
@@ -20,7 +18,7 @@ export function getTimelineRange(items: { startDate: string; endDate: string }[]
   return { minDate, maxDate };
 }
 
-export function getTimelineTicks(minDate: Date, maxDate: Date, zoom: ZoomLevel): { date: Date; label: string; isMajor: boolean }[] {
+export function getTimelineTicks(minDate: Date, maxDate: Date, zoom: 'day' | 'week' | 'month'): { date: Date; label: string; isMajor: boolean }[] {
   const ticks: { date: Date; label: string; isMajor: boolean }[] = [];
   const current = new Date(minDate);
 
@@ -94,4 +92,14 @@ export function daysBetween(start: string, end: string): number {
   const s = new Date(start);
   const e = new Date(end);
   return Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+export function formatMonthYear(date: Date): string {
+  return date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 }

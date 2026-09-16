@@ -2,6 +2,7 @@ export type Status = 'planned' | 'in_progress' | 'completed' | 'blocked';
 export type Priority = 'low' | 'medium' | 'high' | 'critical';
 export type ZoomLevel = 'day' | 'week' | 'month';
 export type VolumeUnit = 'hours' | 'days' | 'weeks' | 'story_points';
+export type ListGroupBy = 'priority' | 'startDate' | 'type' | 'status' | 'none';
 
 export interface CardType {
   id: string;
@@ -29,14 +30,15 @@ export interface Card {
   description: string;
   typeId: string;
   groupId?: string;
-  startDate: string; // ISO date
-  endDate: string;   // ISO date
+  startDate: string;
+  endDate: string;
   volume: number;
   volumeUnit: VolumeUnit;
   jiraLink?: string;
   assigneeId?: string;
   status: Status;
   priority: Priority;
+  order: number; // для сортировки в списке
 }
 
 export interface Settings {
@@ -59,11 +61,11 @@ export const STATUS_CONFIG: Record<Status, { label: string; color: string; bg: s
   blocked: { label: 'Заблокировано', color: 'text-red-400', bg: 'bg-red-500', icon: '🚫' },
 };
 
-export const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; bg: string }> = {
-  low: { label: 'Низкий', color: 'text-gray-400', bg: 'bg-gray-500' },
-  medium: { label: 'Средний', color: 'text-blue-400', bg: 'bg-blue-500' },
-  high: { label: 'Высокий', color: 'text-orange-400', bg: 'bg-orange-500' },
-  critical: { label: 'Критический', color: 'text-red-400', bg: 'bg-red-500' },
+export const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; bg: string; hex: string; icon: string; weight: number }> = {
+  critical: { label: 'Критический', color: 'text-red-400', bg: 'bg-red-500', hex: '#ef4444', icon: '🔴', weight: 0 },
+  high: { label: 'Высокий', color: 'text-orange-400', bg: 'bg-orange-500', hex: '#f97316', icon: '🟠', weight: 1 },
+  medium: { label: 'Средний', color: 'text-blue-400', bg: 'bg-blue-500', hex: '#3b82f6', icon: '🔵', weight: 2 },
+  low: { label: 'Низкий', color: 'text-gray-400', bg: 'bg-gray-500', hex: '#6b7280', icon: '⚪', weight: 3 },
 };
 
 export const VOLUME_UNITS: Record<VolumeUnit, { label: string; short: string }> = {

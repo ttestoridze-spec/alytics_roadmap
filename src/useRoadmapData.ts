@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RoadmapData, Card, CardType, Assignee, CardGroup, Status, Priority, VolumeUnit, TYPE_COLORS } from './types';
+import { RoadmapData, Card, CardType, Assignee, CardGroup, TYPE_COLORS } from './types';
 
 const STORAGE_KEY = 'roadmap-alytics-data';
 
@@ -45,6 +45,7 @@ const DEFAULT_CARDS: Card[] = [
     assigneeId: 'a-3',
     status: 'completed',
     priority: 'high',
+    order: 0,
   },
   {
     id: 'c-2',
@@ -59,6 +60,7 @@ const DEFAULT_CARDS: Card[] = [
     assigneeId: 'a-2',
     status: 'completed',
     priority: 'critical',
+    order: 1,
   },
   {
     id: 'c-3',
@@ -73,6 +75,7 @@ const DEFAULT_CARDS: Card[] = [
     assigneeId: 'a-1',
     status: 'in_progress',
     priority: 'critical',
+    order: 2,
   },
   {
     id: 'c-4',
@@ -87,6 +90,7 @@ const DEFAULT_CARDS: Card[] = [
     assigneeId: 'a-5',
     status: 'planned',
     priority: 'high',
+    order: 3,
   },
   {
     id: 'c-5',
@@ -102,6 +106,7 @@ const DEFAULT_CARDS: Card[] = [
     assigneeId: 'a-2',
     status: 'in_progress',
     priority: 'critical',
+    order: 4,
   },
   {
     id: 'c-6',
@@ -116,6 +121,7 @@ const DEFAULT_CARDS: Card[] = [
     assigneeId: 'a-2',
     status: 'blocked',
     priority: 'medium',
+    order: 5,
   },
 ];
 
@@ -136,7 +142,6 @@ export function useRoadmapData() {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Merge with defaults to ensure new fields exist
         return {
           ...DEFAULT_DATA,
           ...parsed,
@@ -156,10 +161,12 @@ export function useRoadmapData() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
 
-  const addCard = useCallback((card: Omit<Card, 'id'>) => {
-    const newCard: Card = { ...card, id: `c-${Date.now()}` };
-    setData(prev => ({ ...prev, cards: [...prev.cards, newCard] }));
-    return newCard.id;
+  const addCard = useCallback((card: Omit<Card, 'id' | 'order'>) => {
+    setData(prev => {
+      const maxOrder = prev.cards.reduce((max, c) => Math.max(max, c.order), -1);
+      const newCard: Card = { ...card, id: `c-${Date.now()}`, order: maxOrder + 1 };
+      return { ...prev, cards: [...prev.cards, newCard] };
+    });
   }, []);
 
   const updateCard = useCallback((id: string, updates: Partial<Card>) => {
@@ -176,7 +183,14 @@ export function useRoadmapData() {
     }));
   }, []);
 
-  // Settings
+  const reorderCards = useCallback((newOrder: Card[]) => {
+    const reordered = newOrder.map((card, index) => ({ ...card, order: index }));
+    setData(prev => {
+      const otherCards = prev.cards.filter(c => !newOrder.find(nc => nc.id === c.id));
+      return { ...prev, cards: [...reordered, ...otherCards] };
+    });
+  }, []);
+
   const addCardType = useCallback((type: Omit<CardType, 'id'>) => {
     const newType: CardType = { ...type, id: `type-${Date.now()}` };
     setData(prev => ({
@@ -262,6 +276,7 @@ export function useRoadmapData() {
     addCard,
     updateCard,
     deleteCard,
+    reorderCards,
     addCardType,
     updateCardType,
     deleteCardType,
@@ -274,5 +289,3 @@ export function useRoadmapData() {
     resetData,
   };
 }
-
-export { TYPE_COLORS };
